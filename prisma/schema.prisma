@@ -1,0 +1,128 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum StatusZahtjeva {
+  NA_CEKANJU
+  PRIHVACENO
+  ODBIJENO
+}
+
+enum Uloga {
+  ADMIN
+  NOVINAR
+}
+
+// 1. Model za Korisnike (Admine/Novinare)
+model Korisnik {
+  id             Int      @id @default(autoincrement())
+  imePrezime     String   @map("ime_prezime")
+  email          String   @unique
+  lozinka        String
+  uloga          Uloga    @default(NOVINAR)
+  datumKreiranja DateTime @default(now()) @map("datum_kreiranja")
+
+  // Relacije
+  vijesti            Vijest[]
+  zahtjeviZaBrisanje ZahtjevZaBrisanje[]
+
+  @@map("korisnici")
+}
+
+// 2. Model za Kategorije
+model Kategorija {
+  id    Int    @id @default(autoincrement())
+  naziv String @unique
+  slug  String @unique
+
+  vijesti Vijest[]
+
+  @@map("kategorije")
+}
+
+// 3. Model za Vijesti
+model Vijest {
+  id             Int      @id @default(autoincrement())
+  naslov         String
+  podnaslov      String   @db.Text
+  sadrzaj        String   @db.LongText
+  slug           String   @unique
+  slikaUrl       String   @map("slika_url")
+  brojPregleda   Int      @default(0) @map("broj_pregleda")
+  datumKreiranja DateTime @default(now()) @map("datum_kreiranja")
+
+  kategorijaId Int        @map("kategorija_id")
+  kategorija   Kategorija @relation(fields: [kategorijaId], references: [id], onDelete: Cascade)
+
+  autorId Int?      @map("autor_id")
+  autor   Korisnik? @relation(fields: [autorId], references: [id], onDelete: SetNull)
+
+  // Relacije
+  komentari          Komentar[]
+  zahtjeviZaBrisanje ZahtjevZaBrisanje[]
+
+  @@map("vijesti")
+}
+
+// 4. Model za Komentare
+model Komentar {
+  id             Int      @id @default(autoincrement())
+  autorIme       String   @map("autor_ime")
+  sadrzaj        String   @db.Text
+  odobren        Boolean  @default(false)
+  datumKreiranja DateTime @default(now()) @map("datum_kreiranja")
+
+  vijestId Int    @map("vijest_id")
+  vijest   Vijest @relation(fields: [vijestId], references: [id], onDelete: Cascade)
+
+  @@map("komentari")
+}
+
+// 5. Model za Podešavanja Portala
+model Podesavanja {
+  id           Int    @id @default(autoincrement())
+  nazivPortala String @default("Titogradski Novinarski Portal") @map("naziv_portala")
+  opisPortala  String @default("Najnovije vijesti iz Podgorice i okoline.") @map("opis_portala")
+
+  @@map("podesavanja")
+}
+
+// 6. Model za Zahtjeve za Brisanje
+model ZahtjevZaBrisanje {
+  id             Int            @id @default(autoincrement())
+  vijestId       Int            @map("vijest_id")
+  podnosilacId   Int            @map("podnosilac_id")
+  razlog         String?        @db.Text
+  status         StatusZahtjeva @default(NA_CEKANJU)
+  datumKreiranja DateTime       @default(now()) @map("datum_kreiranja")
+
+  podnosilac Korisnik @relation(fields: [podnosilacId], references: [id], onDelete: Cascade)
+  vijest     Vijest   @relation(fields: [vijestId], references: [id], onDelete: Cascade)
+
+  @@map("zahtjevi_za_brisanje")
+}
+
+// 7. Model za staticne stranice: o nama, marketing i uslovi koriscenja
+
+model StvarnaStranica {
+  id      Int    @id @default(autoincrement())
+  tip     String @unique
+  sadrzaj String @db.Text // HTML ili tekstualni sadržaj stranice
+}
+
+//8. Model za reklame
+
+model Reklama {
+  id          Int      @id @default(autoincrement())
+  naziv       String
+  pozicija    String // 'header', 'sidebar', 'footer', itd.
+  slikaUrl    String
+  linkUrl     String?
+  aktivna     Boolean  @default(true)
+  datumIzrade DateTime @default(now())
+}
