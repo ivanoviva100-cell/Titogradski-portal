@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { prisma } from '../config/prisma.js';
 import { autentifikujKorisnika, zahtijevajAdmina } from '../middleware/auth.js';
+import sanitizeHtml from 'sanitize-html';
 
 const router = Router();
 
@@ -36,10 +37,21 @@ router.post('/', autentifikujKorisnika, zahtijevajAdmina, async (req: Request, r
       res.status(400).json({ error: "Tip i sadržaj su obavezni!" });
       return;
     }
+    
+    // SANITIZACIJA UNOSA: Dozvoljavamo bezbjedne HTML tagove, a uklanjamo <script>, onerror i slične prijetnje
+    const ocisceniSadrzaj = sanitizeHtml(sadrzaj, {
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'h1', 'h2', 'span']),
+      allowedAttributes: {
+        ...sanitizeHtml.defaults.allowedAttributes,
+        '*': ['class', 'style'],
+        'a': ['href', 'name', 'target'],
+        'img': ['src', 'alt', 'title', 'width', 'height']
+      }
+    });
 
     const sacuvanaStranica = await prisma.stvarnaStranica.upsert({
       where: { tip: String(tip) },
-      update: { sadrzaj },
+      update: { sadrzaj: ocisceniSadrzaj },
       create: { tip: String(tip), sadrzaj },
     });
 
