@@ -10,7 +10,7 @@ const router = Router();
 
 router.post('/', autentifikujKorisnika, async (req: Request, res: Response) => {
   try {
-    const { naslov, podnaslov, sadrzaj, slug, slikaUrl, kategorijaId, autorId } = req.body;
+    const { naslov, podnaslov, sadrzaj, slug, slikaUrl, slikaOpis, kategorijaId, autorId } = req.body;
 
     if (!naslov || !podnaslov || !sadrzaj || !slug || !slikaUrl || !kategorijaId) {
        res.status(400).json({ error: "Naslov, podnaslov, sadržaj, slug, slikaUrl i kategorijaId su obavezni!" });
@@ -33,6 +33,7 @@ router.post('/', autentifikujKorisnika, async (req: Request, res: Response) => {
         sadrzaj,
         slug,
         slikaUrl,
+        slikaOpis: slikaOpis ? String(slikaOpis) : null, // Dodato polje
         kategorijaId: Number(kategorijaId),
         autorId: autorId ? Number(autorId) : req.korisnik?.id || null
       }
@@ -183,7 +184,7 @@ router.get('/:slug', async (req: Request, res: Response) => {
 router.put('/:id', autentifikujKorisnika, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { naslov, podnaslov, sadrzaj, slug, slikaUrl, kategorijaId } = req.body;
+    const { naslov, podnaslov, sadrzaj, slug, slikaUrl, slikaOpis, kategorijaId } = req.body;
 
     const postoji = await prisma.vijest.findUnique({ where: { id: Number(id) } });
     if (!postoji) {
@@ -207,6 +208,7 @@ router.put('/:id', autentifikujKorisnika, async (req: Request, res: Response) =>
         sadrzaj: sadrzaj ?? postoji.sadrzaj,
         slug: slug ?? postoji.slug,
         slikaUrl: slikaUrl ?? postoji.slikaUrl,
+        slikaOpis: slikaOpis !== undefined ? (slikaOpis ? String(slikaOpis) : null) : postoji.slikaOpis, // Dodato ažuriranje opisa
         kategorijaId: kategorijaId ? Number(kategorijaId) : postoji.kategorijaId
       }
     });
@@ -269,4 +271,4 @@ router.delete('/:id', autentifikujKorisnika, async (req: Request, res: Response)
   }
 });
 
-export default router
+export default router;

@@ -53,6 +53,7 @@ model Vijest {
   sadrzaj        String   @db.LongText
   slug           String   @unique
   slikaUrl       String   @map("slika_url")
+  slikaOpis      String?  @map("slika_opis") @db.Text // DODAJ OVO POLJE
   brojPregleda   Int      @default(0) @map("broj_pregleda")
   datumKreiranja DateTime @default(now()) @map("datum_kreiranja")
 
