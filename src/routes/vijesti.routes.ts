@@ -10,7 +10,7 @@ const router = Router();
 
 router.post('/', autentifikujKorisnika, async (req: Request, res: Response) => {
   try {
-    const { naslov, podnaslov, sadrzaj, slug, slikaUrl, slikaOpis, kategorijaId, autorId } = req.body;
+    const { naslov, podnaslov, sadrzaj, slug, slikaUrl, slikaOpis, kategorijaId, autorId, pozicijaHero, fotoGalerija } = req.body;
 
     if (!naslov || !podnaslov || !sadrzaj || !slug || !slikaUrl || !kategorijaId) {
        res.status(400).json({ error: "Naslov, podnaslov, sadržaj, slug, slikaUrl i kategorijaId su obavezni!" });
@@ -26,6 +26,14 @@ router.post('/', autentifikujKorisnika, async (req: Request, res: Response) => {
        return;
     }
 
+    // Ako je nova vijest postavljena kao GLAVNA, skini GLAVNA status sa stare (da bude samo jedna glavna)
+    if (pozicijaHero === 'GLAVNA') {
+      await prisma.vijest.updateMany({
+        where: { pozicijaHero: 'GLAVNA' },
+        data: { pozicijaHero: 'STANDARDNA' }
+      });
+    }
+
     const novaVijest = await prisma.vijest.create({
       data: {
         naslov,
@@ -33,7 +41,9 @@ router.post('/', autentifikujKorisnika, async (req: Request, res: Response) => {
         sadrzaj,
         slug,
         slikaUrl,
-        slikaOpis: slikaOpis ? String(slikaOpis) : null, // Dodato polje
+        slikaOpis: slikaOpis ? String(slikaOpis) : null,
+        fotoGalerija: Array.isArray(fotoGalerija) ? fotoGalerija : [],
+        pozicijaHero: pozicijaHero || 'STANDARDNA', 
         kategorijaId: Number(kategorijaId),
         autorId: autorId ? Number(autorId) : req.korisnik?.id || null
       }
@@ -184,7 +194,7 @@ router.get('/:slug', async (req: Request, res: Response) => {
 router.put('/:id', autentifikujKorisnika, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { naslov, podnaslov, sadrzaj, slug, slikaUrl, slikaOpis, kategorijaId } = req.body;
+    const { naslov, podnaslov, sadrzaj, slug, slikaUrl, slikaOpis, kategorijaId, pozicijaHero, fotoGalerija } = req.body;
 
     const postoji = await prisma.vijest.findUnique({ where: { id: Number(id) } });
     if (!postoji) {
@@ -200,6 +210,17 @@ router.put('/:id', autentifikujKorisnika, async (req: Request, res: Response) =>
       }
     }
 
+    // Ako se ova vijest postavlja kao GLAVNA, skini GLAVNA status sa svih ostalih
+    if (pozicijaHero === 'GLAVNA') {
+      await prisma.vijest.updateMany({
+        where: { 
+          NOT: { id: Number(id) },
+          pozicijaHero: 'GLAVNA' 
+        },
+        data: { pozicijaHero: 'STANDARDNA' }
+      });
+    }
+
     const azuriranaVijest = await prisma.vijest.update({
       where: { id: Number(id) },
       data: {
@@ -208,7 +229,9 @@ router.put('/:id', autentifikujKorisnika, async (req: Request, res: Response) =>
         sadrzaj: sadrzaj ?? postoji.sadrzaj,
         slug: slug ?? postoji.slug,
         slikaUrl: slikaUrl ?? postoji.slikaUrl,
-        slikaOpis: slikaOpis !== undefined ? (slikaOpis ? String(slikaOpis) : null) : postoji.slikaOpis, // Dodato ažuriranje opisa
+        slikaOpis: slikaOpis !== undefined ? (slikaOpis ? String(slikaOpis) : null) : postoji.slikaOpis,
+        fotoGalerija: fotoGalerija !== undefined ? fotoGalerija : postoji.fotoGalerija,
+        pozicijaHero: pozicijaHero !== undefined ? pozicijaHero : postoji.pozicijaHero,
         kategorijaId: kategorijaId ? Number(kategorijaId) : postoji.kategorijaId
       }
     });
