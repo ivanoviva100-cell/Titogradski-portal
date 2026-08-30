@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import crypto from 'crypto';
 
 import kategorijeRute from './src/routes/kategorije.routes.js';
 import komentariRute from './src/routes/komentari.routes.js';
@@ -45,14 +46,27 @@ app.use('/vijesti', vijestiRute);
 app.use('/zahtjevi-za-brisanje', zahtjeviZaBrisanjeRute);
 app.use('/auth', authRute);
 
-// Ruta za upload i optimizaciju slike
+// Ruta za upload, optimizaciju i provjeru duplikata slike
 app.post('/api/upload', upload.single('slika'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Nema priložene slike.' });
     }
 
-    const fileName = `img-${Date.now()}.webp`;
+    const fileHash = crypto
+      .createHash('sha256')
+      .update(req.file.buffer)
+      .digest('hex');
+
+    const existingFiles = fs.readdirSync(uploadDir);
+    const duplicateFile = existingFiles.find((file) => file.startsWith(`img-${fileHash}`));
+
+    if (duplicateFile) {
+      const slikaUrl = `/uploads/${duplicateFile}`;
+      return res.json({ slikaUrl, duplicate: true });
+    }
+
+    const fileName = `img-${fileHash}.webp`;
     const outputPath = path.join(uploadDir, fileName);
 
     await sharp(req.file.buffer)
@@ -60,15 +74,14 @@ app.post('/api/upload', upload.single('slika'), async (req, res) => {
       .webp({ quality: 80 }) 
       .toFile(outputPath);
 
-    const slikaUrl = `http://localhost:5000/uploads/${fileName}`;
+    const slikaUrl = `/uploads/${fileName}`;
     
-    res.json({ slikaUrl });
+    res.json({ slikaUrl, duplicate: false });
   } catch (error) {
     console.error('Greška pri obradi slike:', error);
     res.status(500).json({ error: 'Greška prilikom optimizacije slike.' });
   }
 });
-
 
 // ==========================================
 // POKRETANJE SERVERA 
@@ -79,4 +92,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server radi na http://localhost:${PORT}`);
 });
-
