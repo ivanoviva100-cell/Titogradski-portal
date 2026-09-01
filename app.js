@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import crypto from 'crypto';
 import kategorijeRute from './src/routes/kategorije.routes.js';
 import komentariRute from './src/routes/komentari.routes.js';
 import korisniciRute from './src/routes/korisnici.routes.js';
@@ -37,23 +38,30 @@ app.use('/statistika', statistikaRute);
 app.use('/vijesti', vijestiRute);
 app.use('/zahtjevi-za-brisanje', zahtjeviZaBrisanjeRute);
 app.use('/auth', authRute);
-// Ruta za upload i optimizaciju slike
+// Ruta za upload, optimizaciju i provjeru duplikata slike
 app.post('/api/upload', upload.single('slika'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'Nema priložene slike.' });
         }
-        // Generisanje jedinstvenog imena sa .webp ekstenzijom
-        const fileName = `img-${Date.now()}.webp`;
+        const fileHash = crypto
+            .createHash('sha256')
+            .update(req.file.buffer)
+            .digest('hex');
+        const existingFiles = fs.readdirSync(uploadDir);
+        const duplicateFile = existingFiles.find((file) => file.startsWith(`img-${fileHash}`));
+        if (duplicateFile) {
+            const slikaUrl = `/uploads/${duplicateFile}`;
+            return res.json({ slikaUrl, duplicate: true });
+        }
+        const fileName = `img-${fileHash}.webp`;
         const outputPath = path.join(uploadDir, fileName);
-        // Sharp obrađuje sliku iz memorije
         await sharp(req.file.buffer)
-            .resize(1200, null, { withoutEnlargement: true }) // Maksimalna širina 1200px, visina se srazmjerno prilagođava
-            .webp({ quality: 80 }) // Konvertuje u WebP sa 80% kvaliteta radi uštede prostora
+            .resize(1200, null, { withoutEnlargement: true })
+            .webp({ quality: 80 })
             .toFile(outputPath);
-        // Vraćamo javni URL ka sačuvanoj slici
-        const slikaUrl = `http://localhost:5000/uploads/${fileName}`;
-        res.json({ slikaUrl });
+        const slikaUrl = `/uploads/${fileName}`;
+        res.json({ slikaUrl, duplicate: false });
     }
     catch (error) {
         console.error('Greška pri obradi slike:', error);

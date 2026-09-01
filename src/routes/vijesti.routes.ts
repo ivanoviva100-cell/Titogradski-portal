@@ -5,6 +5,56 @@ import { autentifikujKorisnika } from '../middleware/auth.js';
 const router = Router();
 
 // ==========================================
+// Pomoćna funkcija za Hero kaskadnu logiku
+// =`ciljnaPozicija`: pozicija koju vijest treba da dobije ('GLAVNA', 'SPOREDNA', 'STANDARDNA')
+// =`trenutniId`: ID vijesti koja se trenutno kreira ili mijenja (da je ne diramo u kaskadama)
+// ==========================================
+async function obradiKaskadnoHeroPozicije(tx: any, ciljnaPozicija: string, trenutniId?: number) {
+  if (ciljnaPozicija === 'GLAVNA') {
+    // 1. Ako postavljamo vijest na GLAVNA:
+    // Stara GLAVNA vijest (ako postoji i nije ova ista) spada na status SPOREDNA
+    const staraGlavna = await tx.vijest.findFirst({
+      where: { pozicijaHero: 'GLAVNA', ...(trenutniId ? { NOT: { id: trenutniId } } : {}) }
+    });
+
+    if (staraGlavna) {
+      await tx.vijest.update({
+        where: { id: staraGlavna.id },
+        data: { pozicijaHero: 'SPOREDNA' }
+      });
+    }
+
+    // 2. Nakon što je stara Glavna postala Sporedna, provjeravamo koliko ukupno imamo Sporednih vijesti
+    await provjeriIspraviBrojSporednih(tx, trenutniId);
+
+  } else if (ciljnaPozicija === 'SPOREDNA') {
+    // Ako postavljamo vijest na SPOREDNA, provjeravamo limit od max 4 sporedne vijesti
+    await provjeriIspraviBrojSporednih(tx, trenutniId);
+  }
+}
+
+// Pomoćna funkcija koja osigurava da nikad nema više od 4 sporedne vijesti
+async function provjeriIspraviBrojSporednih(tx: any, trenutniId?: number) {
+  const sporedneVijesti = await tx.vijest.findMany({
+    where: { 
+      pozicijaHero: 'SPOREDNA', 
+      ...(trenutniId ? { NOT: { id: trenutniId } } : {}) 
+    },
+    orderBy: { datumKreiranja: 'asc' } // Najstarije prve
+  });
+
+  // Ako ih ima 4 ili više, najstariju sporednu prebacujemo u STANDARDNA
+  if (sporedneVijesti.length >= 4) {
+    const najstarijaSporedna = sporedneVijesti[0];
+    await tx.vijest.update({
+      where: { id: najstarijaSporedna.id },
+      data: { pozicijaHero: 'STANDARDNA' }
+    });
+  }
+}
+
+
+// ==========================================
 // VIJESTI RUTE
 // ==========================================
 
@@ -26,27 +76,27 @@ router.post('/', autentifikujKorisnika, async (req: Request, res: Response) => {
        return;
     }
 
-    // Ako je nova vijest postavljena kao GLAVNA, skini GLAVNA status sa stare (da bude samo jedna glavna)
-    if (pozicijaHero === 'GLAVNA') {
-      await prisma.vijest.updateMany({
-        where: { pozicijaHero: 'GLAVNA' },
-        data: { pozicijaHero: 'STANDARDNA' }
-      });
-    }
+    const zeljenaPozicija = pozicijaHero || 'STANDARDNA';
 
-    const novaVijest = await prisma.vijest.create({
-      data: {
-        naslov,
-        podnaslov,
-        sadrzaj,
-        slug,
-        slikaUrl,
-        slikaOpis: slikaOpis ? String(slikaOpis) : null,
-        fotoGalerija: Array.isArray(fotoGalerija) ? fotoGalerija : [],
-        pozicijaHero: pozicijaHero || 'STANDARDNA', 
-        kategorijaId: Number(kategorijaId),
-        autorId: autorId ? Number(autorId) : req.korisnik?.id || null
-      }
+    // Koristimo Prisma Transakciju za bezbjedno kaskadno premještanje
+    const novaVijest = await prisma.$transaction(async (tx) => {
+      // Izvršavamo kaskadnu provjeru i pomjeranje
+      await obradiKaskadnoHeroPozicije(tx, zeljenaPozicija);
+
+      return await tx.vijest.create({
+        data: {
+          naslov,
+          podnaslov,
+          sadrzaj,
+          slug,
+          slikaUrl,
+          slikaOpis: slikaOpis ? String(slikaOpis) : null,
+          fotoGalerija: Array.isArray(fotoGalerija) ? fotoGalerija : [],
+          pozicijaHero: zeljenaPozicija, 
+          kategorijaId: Number(kategorijaId),
+          autorId: autorId ? Number(autorId) : req.korisnik?.id || null
+        }
+      });
     });
 
     res.status(201).json(novaVijest);
@@ -55,6 +105,7 @@ router.post('/', autentifikujKorisnika, async (req: Request, res: Response) => {
        res.status(400).json({ error: "Vijest sa ovim slug-om već postoji!" });
        return;
     }
+    console.error("Greška pri kreiranju vijesti:", error);
     res.status(500).json({ error: "Greška prilikom kreiranja vijesti." });
   }
 });
@@ -194,9 +245,10 @@ router.get('/:slug', async (req: Request, res: Response) => {
 router.put('/:id', autentifikujKorisnika, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const vijestId = Number(id);
     const { naslov, podnaslov, sadrzaj, slug, slikaUrl, slikaOpis, kategorijaId, pozicijaHero, fotoGalerija } = req.body;
 
-    const postoji = await prisma.vijest.findUnique({ where: { id: Number(id) } });
+    const postoji = await prisma.vijest.findUnique({ where: { id: vijestId } });
     if (!postoji) {
       res.status(404).json({ error: "Vijest ne postoji." });
       return;
@@ -210,30 +262,29 @@ router.put('/:id', autentifikujKorisnika, async (req: Request, res: Response) =>
       }
     }
 
-    // Ako se ova vijest postavlja kao GLAVNA, skini GLAVNA status sa svih ostalih
-    if (pozicijaHero === 'GLAVNA') {
-      await prisma.vijest.updateMany({
-        where: { 
-          NOT: { id: Number(id) },
-          pozicijaHero: 'GLAVNA' 
-        },
-        data: { pozicijaHero: 'STANDARDNA' }
-      });
-    }
+    const novaPozicija = pozicijaHero !== undefined ? pozicijaHero : postoji.pozicijaHero;
 
-    const azuriranaVijest = await prisma.vijest.update({
-      where: { id: Number(id) },
-      data: {
-        naslov: naslov ?? postoji.naslov,
-        podnaslov: podnaslov ?? postoji.podnaslov,
-        sadrzaj: sadrzaj ?? postoji.sadrzaj,
-        slug: slug ?? postoji.slug,
-        slikaUrl: slikaUrl ?? postoji.slikaUrl,
-        slikaOpis: slikaOpis !== undefined ? (slikaOpis ? String(slikaOpis) : null) : postoji.slikaOpis,
-        fotoGalerija: fotoGalerija !== undefined ? fotoGalerija : postoji.fotoGalerija,
-        pozicijaHero: pozicijaHero !== undefined ? pozicijaHero : postoji.pozicijaHero,
-        kategorijaId: kategorijaId ? Number(kategorijaId) : postoji.kategorijaId
+    // Transakcija za ažuriranje i kaskadno pomjeranje pozicija
+    const azuriranaVijest = await prisma.$transaction(async (tx) => {
+      // Ako se pozicija mijenja na GLAVNA ili SPOREDNA, pokrećemo kaskadnu logiku
+      if (novaPozicija !== postoji.pozicijaHero || novaPozicija === 'GLAVNA' || novaPozicija === 'SPOREDNA') {
+        await obradiKaskadnoHeroPozicije(tx, novaPozicija, vijestId);
       }
+
+      return await tx.vijest.update({
+        where: { id: vijestId },
+        data: {
+          naslov: naslov ?? postoji.naslov,
+          podnaslov: podnaslov ?? postoji.podnaslov,
+          sadrzaj: sadrzaj ?? postoji.sadrzaj,
+          slug: slug ?? postoji.slug,
+          slikaUrl: slikaUrl ?? postoji.slikaUrl,
+          slikaOpis: slikaOpis !== undefined ? (slikaOpis ? String(slikaOpis) : null) : postoji.slikaOpis,
+          fotoGalerija: fotoGalerija !== undefined ? fotoGalerija : postoji.fotoGalerija,
+          pozicijaHero: novaPozicija,
+          kategorijaId: kategorijaId ? Number(kategorijaId) : postoji.kategorijaId
+        }
+      });
     });
 
     res.json(azuriranaVijest);
@@ -242,6 +293,7 @@ router.put('/:id', autentifikujKorisnika, async (req: Request, res: Response) =>
       res.status(400).json({ error: "Zauzet je ovaj novi slug!" });
       return;
     }
+    console.error("Greška prilikom izmjene vijesti:", error);
     res.status(500).json({ error: "Greška prilikom izmjene vijesti." });
   }
 });

@@ -61,6 +61,41 @@ router.get('/', autentifikujKorisnika, async (req, res) => {
         res.status(500).json({ error: "Greška prilikom dohvaćanja korisnika." });
     }
 });
+// Nova ruta za izmjenu podataka korisnika (imePrezime / uloga)
+router.put('/:id', autentifikujKorisnika, zahtijevajAdmina, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { imePrezime, uloga } = req.body;
+        if (!imePrezime) {
+            res.status(400).json({ error: "Ime i prezime (ili nik) je obavezno." });
+            return;
+        }
+        const korisnikPostoji = await prisma.korisnik.findUnique({ where: { id: Number(id) } });
+        if (!korisnikPostoji) {
+            res.status(404).json({ error: "Korisnik ne postoji." });
+            return;
+        }
+        const azuriraniKorisnik = await prisma.korisnik.update({
+            where: { id: Number(id) },
+            data: {
+                imePrezime,
+                ...(uloga && { uloga }),
+            },
+            select: {
+                id: true,
+                imePrezime: true,
+                email: true,
+                uloga: true,
+                datumKreiranja: true,
+            },
+        });
+        res.json(azuriraniKorisnik);
+    }
+    catch (error) {
+        console.error("Greška prilikom izmjene korisnika:", error);
+        res.status(500).json({ error: "Greška prilikom ažuriranja korisnika." });
+    }
+});
 router.delete('/:id', autentifikujKorisnika, zahtijevajAdmina, async (req, res) => {
     try {
         const { id } = req.params;
