@@ -61,7 +61,7 @@ router.get('/', autentifikujKorisnika, async (req, res) => {
         res.status(500).json({ error: "Greška prilikom dohvaćanja korisnika." });
     }
 });
-// Nova ruta za izmjenu podataka korisnika (imePrezime / uloga)
+// Izmjena podataka korisnika (imePrezime / uloga)
 router.put('/:id', autentifikujKorisnika, zahtijevajAdmina, async (req, res) => {
     try {
         const { id } = req.params;

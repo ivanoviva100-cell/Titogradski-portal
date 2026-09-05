@@ -70,7 +70,7 @@ router.get('/', autentifikujKorisnika, async (req: Request, res: Response): Prom
   }
 });
 
-// Nova ruta za izmjenu podataka korisnika (imePrezime / uloga)
+// Izmjena podataka korisnika (imePrezime / uloga)
 router.put('/:id', autentifikujKorisnika, zahtijevajAdmina, async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;

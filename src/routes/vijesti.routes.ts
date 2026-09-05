@@ -4,15 +4,8 @@ import { autentifikujKorisnika } from '../middleware/auth.js';
 
 const router = Router();
 
-// ==========================================
-// Pomoćna funkcija za Hero kaskadnu logiku
-// =`ciljnaPozicija`: pozicija koju vijest treba da dobije ('GLAVNA', 'SPOREDNA', 'STANDARDNA')
-// =`trenutniId`: ID vijesti koja se trenutno kreira ili mijenja (da je ne diramo u kaskadama)
-// ==========================================
 async function obradiKaskadnoHeroPozicije(tx: any, ciljnaPozicija: string, trenutniId?: number) {
   if (ciljnaPozicija === 'GLAVNA') {
-    // 1. Ako postavljamo vijest na GLAVNA:
-    // Stara GLAVNA vijest (ako postoji i nije ova ista) spada na status SPOREDNA
     const staraGlavna = await tx.vijest.findFirst({
       where: { pozicijaHero: 'GLAVNA', ...(trenutniId ? { NOT: { id: trenutniId } } : {}) }
     });
@@ -24,26 +17,21 @@ async function obradiKaskadnoHeroPozicije(tx: any, ciljnaPozicija: string, trenu
       });
     }
 
-    // 2. Nakon što je stara Glavna postala Sporedna, provjeravamo koliko ukupno imamo Sporednih vijesti
     await provjeriIspraviBrojSporednih(tx, trenutniId);
 
   } else if (ciljnaPozicija === 'SPOREDNA') {
-    // Ako postavljamo vijest na SPOREDNA, provjeravamo limit od max 4 sporedne vijesti
     await provjeriIspraviBrojSporednih(tx, trenutniId);
   }
 }
-
-// Pomoćna funkcija koja osigurava da nikad nema više od 4 sporedne vijesti
 async function provjeriIspraviBrojSporednih(tx: any, trenutniId?: number) {
   const sporedneVijesti = await tx.vijest.findMany({
     where: { 
       pozicijaHero: 'SPOREDNA', 
       ...(trenutniId ? { NOT: { id: trenutniId } } : {}) 
     },
-    orderBy: { datumKreiranja: 'asc' } // Najstarije prve
+    orderBy: { datumKreiranja: 'asc' } 
   });
 
-  // Ako ih ima 4 ili više, najstariju sporednu prebacujemo u STANDARDNA
   if (sporedneVijesti.length >= 4) {
     const najstarijaSporedna = sporedneVijesti[0];
     await tx.vijest.update({
@@ -52,7 +40,6 @@ async function provjeriIspraviBrojSporednih(tx: any, trenutniId?: number) {
     });
   }
 }
-
 
 // ==========================================
 // VIJESTI RUTE
@@ -78,9 +65,7 @@ router.post('/', autentifikujKorisnika, async (req: Request, res: Response) => {
 
     const zeljenaPozicija = pozicijaHero || 'STANDARDNA';
 
-    // Koristimo Prisma Transakciju za bezbjedno kaskadno premještanje
     const novaVijest = await prisma.$transaction(async (tx) => {
-      // Izvršavamo kaskadnu provjeru i pomjeranje
       await obradiKaskadnoHeroPozicije(tx, zeljenaPozicija);
 
       return await tx.vijest.create({
@@ -264,9 +249,7 @@ router.put('/:id', autentifikujKorisnika, async (req: Request, res: Response) =>
 
     const novaPozicija = pozicijaHero !== undefined ? pozicijaHero : postoji.pozicijaHero;
 
-    // Transakcija za ažuriranje i kaskadno pomjeranje pozicija
     const azuriranaVijest = await prisma.$transaction(async (tx) => {
-      // Ako se pozicija mijenja na GLAVNA ili SPOREDNA, pokrećemo kaskadnu logiku
       if (novaPozicija !== postoji.pozicijaHero || novaPozicija === 'GLAVNA' || novaPozicija === 'SPOREDNA') {
         await obradiKaskadnoHeroPozicije(tx, novaPozicija, vijestId);
       }

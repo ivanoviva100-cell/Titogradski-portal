@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
 import { autentifikujKorisnika, zahtijevajAdmina } from '../middleware/auth.js';
 const router = Router();
-// 1. Kreiranje zahtjeva za brisanje (Mogu i novinari i admini)
+// 1. Kreiranje zahtjeva za brisanje (novinari i admini)
 router.post('/', autentifikujKorisnika, async (req, res) => {
     try {
         const { vijestId, razlog } = req.body;
@@ -48,14 +48,10 @@ router.post('/:id/odluka', autentifikujKorisnika, zahtijevajAdmina, async (req, 
             return res.status(404).json({ error: 'Zahtjev nije pronađen.' });
         }
         if (prihvaceno) {
-            // Koristimo transakciju da se sve izvrši ili ništa
             await prisma.$transaction(async (tx) => {
-                // Prvo obrišemo zahtjev iz baze (ili mu promijenimo status prije brisanja vijesti)
-                // Najčistije je obrisati zahtjev za brisanje jer vijest više ne postoji
                 await tx.zahtjevZaBrisanje.delete({
                     where: { id: zahtjevId }
                 });
-                // Zatim obrišemo samu vijest
                 await tx.vijest.delete({
                     where: { id: zahtjev.vijestId }
                 });
@@ -63,7 +59,6 @@ router.post('/:id/odluka', autentifikujKorisnika, zahtijevajAdmina, async (req, 
             return res.status(200).json({ message: 'Zahtjev prihvaćen. Vijest je trajno obrisana.' });
         }
         else {
-            // Ako je odbijeno, samo azuriramo status
             await prisma.zahtjevZaBrisanje.update({
                 where: { id: zahtjevId },
                 data: { status: 'ODBIJENO' }

@@ -38,7 +38,6 @@ router.post('/', autentifikujKorisnika, zahtijevajAdmina, async (req: Request, r
       return;
     }
     
-    // SANITIZACIJA UNOSA: Dozvoljavamo bezbjedne HTML tagove, a uklanjamo <script>, onerror i slične prijetnje
     const ocisceniSadrzaj = sanitizeHtml(sadrzaj, {
       allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'h1', 'h2', 'span']),
       allowedAttributes: {

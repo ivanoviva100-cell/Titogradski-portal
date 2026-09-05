@@ -30,7 +30,6 @@ router.post('/', autentifikujKorisnika, zahtijevajAdmina, async (req, res) => {
             res.status(400).json({ error: "Tip i sadržaj su obavezni!" });
             return;
         }
-        // SANITIZACIJA UNOSA: Dozvoljavamo bezbjedne HTML tagove, a uklanjamo <script>, onerror i slične prijetnje
         const ocisceniSadrzaj = sanitizeHtml(sadrzaj, {
             allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'h1', 'h2', 'span']),
             allowedAttributes: {
